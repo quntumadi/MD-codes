@@ -118,12 +118,17 @@ mol0, N_mol0, t0 = get_mol(file0, ids)
 
 print(f'\t\t{N_mol} molecules found resulting in a total of {Natoms} atoms in the system')
 print(f'\t\tOut of {N_mol} molecules only {len(ids)} will be tracked')
+
 del mol
-del N_mol 
+del N_mol
 del t
-print(N_mol0)
+
 msd = np.zeros(len(sorted_files))
 del_t = np.zeros(len(sorted_files))
+
+# If only one molecule is tracked, store its Y-position over time
+if len(ids) == 1:
+    single_mol_y_pos = np.zeros(len(sorted_files))
 
 # Loop over files and calculate MSD
 for t, f in tqdm(enumerate(sorted_files[1:], start=1), total=len(sorted_files) - 1, desc="Processing files"):
@@ -143,19 +148,40 @@ for t, f in tqdm(enumerate(sorted_files[1:], start=1), total=len(sorted_files) -
     msd[t] = np.sum(del_r_sq) / N_mol0  # Average MSD per molecule
     del_t[t] = t_step
 
+    # If only one molecule is tracked, store its Y-position over time
+    if len(ids) == 1:
+        single_mol_y_pos[t] = mol_t[0, 1]  # Y-position of the single tracked molecule
+
 end = time.time()
 print(f"Time taken: {end - start:.2f} seconds")
 
-# Plot MSD vs Time
-#time_steps = [t for t in range(1, len(sorted_files))]
-diff = np.diff(msd)/(6*np.diff(del_t))
-fig, ax = plt.subplots(1, 2, figsize = (12, 4))
+# Plot MSD vs Time and, if available, the Y-position of the single tracked molecule
+diff = np.diff(msd) / (6 * np.diff(del_t))
+fig, ax = plt.subplots(1, 2, figsize=(18, 4))
+
+# First subplot for MSD and Y-position
 ax[0].grid()
-ax[1].grid()
-ax[0].set_ylabel("msd")
-ax[1].set_ylabel("diff coeff")
 ax[0].set_xlabel("time")
+ax[0].set_ylabel("msd")
+ax[0].plot(del_t, msd, label='MSD')
+
+# If only one molecule is tracked, add a secondary y-axis for Y-position
+if len(ids) == 1:
+    ax_y_pos = ax[0].twinx()  # Create a second y-axis sharing the same x-axis
+    ax_y_pos.set_ylabel("Y-position", color='orange')
+    ax_y_pos.plot(del_t, single_mol_y_pos, label='Y-position', color='orange')
+    ax_y_pos.tick_params(axis='y', labelcolor='orange')
+
+ax[0].legend(loc="upper left")  # Legend for MSD
+if len(ids) == 1:
+    ax_y_pos.legend(loc="upper right")  # Legend for Y-position
+
+# Second subplot for the diffusion coefficient
+ax[1].grid()
 ax[1].set_xlabel("time")
-ax[0].plot(del_t, msd)
+ax[1].set_ylabel("diff coeff")
 ax[1].plot(del_t[:-1], diff)
+
+# Save the figure
 plt.savefig('diff_y_mid.png', dpi=300)
+
