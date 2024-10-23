@@ -88,15 +88,31 @@ def get_mol(file, ids=[]):
     mol = np.vstack((comx, comy, comz)).T
     return mol, N_mol, t_step
 
-def get_ids(atoms): # a custom function used for getting ids of molecules to be tracked
-    #return atoms.loc[(atoms['Py'] < 250) & (atoms['Py'] > 195) & (atoms['Mid'] > 4000)]['Mid'].unique()
-    return [i for i in range(4001, 8000)]
+def get_ids(interface, depth = 0.5, spread = 0.01, seed=42): # a custom function used for getting ids of molecules to be tracked
+    """ 
+    The fuction will look at the last timestep and look for molecules of type 1(to be tracked) that 
+    have travelled far enough(but not too deep as those would be rare if the system is immicible) into
+    to bulk of molecules of type 2 and pick one at random, you can also look deeper by specifying depth 
+    parameter ranging from 0 to 1. spread parameter determines the volume of search area centered at depth.
+    """
+    sys_f = sorted_files[-1]                # pick up the final configuration
+    t, N, X, Y, Z, pos = read_data(sys_f)
+    centre = interface*(1 - depth)              # assuming molecules diffusing from right to left
+    print(f"centre: {centre}")
+    ids = pos.loc[(pos['Py'] > (centre - spread*interface)) & (pos['Py'] < (centre + spread*interface)) & (pos['Mid'] > 4000)]['Mid'].unique()
+    print(ids)
+    if len(ids) == 0:
+        return []
+    np.random.seed(seed)
+    r = np.random.randint(len(ids))
+    return [ids[r]]
 
 # Initialize variables
 start = time.time()
 file0 = os.path.join('trajactory_files', sorted_files[0].name)
 t_step, Natoms, X_box, Y_box, Z_box, atoms = read_data(file0)
-ids = get_ids(atoms)
+ids = get_ids(Y_box[1]/2, 0.6)
+print('ids: ', ids)
 mol, N_mol, t = get_mol(file0)
 mol0, N_mol0, t0 = get_mol(file0, ids)
 
@@ -105,12 +121,16 @@ print(f'\t\tOut of {N_mol} molecules only {len(ids)} will be tracked')
 del mol
 del N_mol 
 del t
-
+print(N_mol0)
 msd = np.zeros(len(sorted_files))
 del_t = np.zeros(len(sorted_files))
 
 # Loop over files and calculate MSD
 for t, f in tqdm(enumerate(sorted_files[1:], start=1), total=len(sorted_files) - 1, desc="Processing files"):
+    if len(ids) == 0:
+        print(f'\t\t\nERROR: No molecules to track !!!!!!!!')
+        break
+
     file = os.path.join('trajactory_files', f.name)
     mol_t, N_mol, t_step = get_mol(file, ids)
     
@@ -138,5 +158,4 @@ ax[0].set_xlabel("time")
 ax[1].set_xlabel("time")
 ax[0].plot(del_t, msd)
 ax[1].plot(del_t[:-1], diff)
-plt.show()
 plt.savefig('diff_y_mid.png', dpi=300)
